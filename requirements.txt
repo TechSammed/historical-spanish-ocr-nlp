@@ -1,0 +1,11 @@
+PyPDF2
+pdf2image
+Pillow
+opencv-python
+numpy
+matplotlib
+pytesseract
+jiwer
+torch
+torchvision
+python-Levenshtein

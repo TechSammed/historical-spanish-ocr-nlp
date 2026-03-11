@@ -1,0 +1,6 @@
+page_1.txt → CER: 0.0918, WER: 0.5213
+page_2.txt → CER: 0.0825, WER: 0.4000
+page_3.txt → CER: 0.1470, WER: 0.5278
+
+Average CER: 0.10710942803174828
+Average WER: 0.4830181245074862
