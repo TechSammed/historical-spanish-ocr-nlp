@@ -1,0 +1,16 @@
+OCR Evaluation Results
+
+Dataset: Historical Spanish document pages
+Evaluation page: Page 1
+
+CRNN Model
+CER: 26.70
+WER: 32.51
+
+Tesseract OCR
+CER: 42.02
+WER: 44.60
+
+Observation:
+The CRNN model outperforms the traditional Tesseract OCR engine
+on this historical document dataset.

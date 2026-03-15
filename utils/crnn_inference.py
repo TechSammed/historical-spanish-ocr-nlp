@@ -96,9 +96,9 @@ def predict_line(model, vocab, image_path):
 # ----------------------------------------------------
 # Run inference on multiple lines
 # ----------------------------------------------------
-def test_model(model, vocab, folder, num_samples=100):
+def test_model(model, vocab, folder):
 
-    files = sorted(os.listdir(folder))[:num_samples]
+    files = [f for f in sorted(os.listdir(folder)) if f.endswith(".png")]
 
     os.makedirs("results", exist_ok=True)
 
@@ -121,8 +121,6 @@ def test_model(model, vocab, folder, num_samples=100):
             f.write(line + "\n")
 
     print("\nPredictions saved to:", output_path)
-
-
 # ----------------------------------------------------
 # Main
 # ----------------------------------------------------
@@ -132,4 +130,4 @@ if __name__ == "__main__":
 
     folder = "data/train_lines"
 
-    test_model(model, vocab, folder, num_samples=30)
+    test_model(model, vocab, folder)
