@@ -376,7 +376,7 @@ renai_project/
 ---
 
 # Detailed Project Structure
-
+```
 renai_project/
 
 ├── data/
@@ -413,6 +413,7 @@ renai_project/
 │   ├── page_1_llm.txt
 │   └── metrics.txt
 
+```
 ---
 
 # 19. Technologies Used
