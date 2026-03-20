@@ -1,482 +1,388 @@
+# Historical Spanish OCR using CRNN + LLM Post-processing
 
-```markdown
-# Historical Spanish OCR using CRNN
+This project implements a complete OCR pipeline for **early modern Spanish printed texts**, focusing on improving recognition accuracy over traditional OCR systems like **Tesseract** using a **deep learning-based CRNN model**, along with **LLM-based post-processing**.
 
-This project focuses on building an OCR pipeline for **early modern Spanish printed texts**.  
-The goal is to improve recognition accuracy beyond the baseline produced by traditional OCR engines like Tesseract by training a **custom CNN-RNN (CRNN) model**.
-
-The system processes scanned historical documents and predicts text using deep learning-based sequence recognition.
+The pipeline processes scanned historical documents and performs **text extraction, model training, inference, evaluation, and refinement using an LLM**.
 
 ---
 
-# Project Pipeline
+# Project Overview
 
-The project follows a multi-stage OCR pipeline:
+Historical documents present unique OCR challenges:
 
-1. PDF → Image Conversion  
-2. Baseline OCR Evaluation  
-3. Layout Cleaning  
-4. CRNN Training Dataset Creation  
-5. CRNN Model Training  
-6. CRNN Inference Pipeline  
+* Irregular typography and fonts
+* Ink degradation and noise
+* Non-standard spelling conventions
+* Layout inconsistencies
+
+This project explores whether a **custom-trained CRNN model + LLM refinement** can outperform traditional OCR engines on such data.
+
+---
+
+# Complete OCR Pipeline
+
+```
+PDF → Image Conversion → Layout Cleaning → Line Segmentation
+→ Dataset Creation → CRNN Training → Inference
+→ Prediction Merging → LLM Post-processing
+→ Evaluation (CER/WER) → Baseline Comparison
+```
 
 ---
 
 # 1. PDF → Image Conversion
 
-PDF pages are rendered into high-resolution PNG images before processing.
+PDF pages are converted into high-resolution images.
 
-### Why conversion is required
+### Configuration
 
-CNN-based models require images as input, while PDFs contain vector-based page representations.
-
-### Resolution choice
-
-| DPI | Reason |
-|----|------|
-150 DPI | Too low for historical fonts |
-300 DPI | Balanced quality and speed |
-600 DPI | Very heavy processing |
-
-Final choice: **300 DPI**
-
-Images are saved into:
-
-```
-
-data/images/
-
-```
-
----
-
-# 2. Image Preprocessing Study
-
-Initial experiments evaluated whether preprocessing improves OCR performance.
-
-Tested preprocessing steps:
-
-- Grayscale conversion  
-- Thresholding (binarization)  
-- Denoising  
-
-However, experiments showed that heavy preprocessing **degraded OCR performance**.
+* Resolution: **300 DPI**
+* Format: PNG
 
 ### Reason
 
-Tesseract already performs:
+* CNN models require image input
+* 300 DPI balances clarity and computation cost
 
-- grayscale conversion  
-- thresholding  
-- layout detection  
-- line segmentation  
-
-Overprocessing distorted thin historical characters.
-
-### Final decision
-
-For the baseline:
+Output:
 
 ```
-
-Use raw 300 DPI images
-
+data/images/
 ```
 
 ---
 
-# 3. Baseline OCR Evaluation
+# 2. Baseline OCR (Tesseract)
 
-The **Spanish Tesseract OCR engine** was used to create a baseline.
+Tesseract OCR (Spanish model) is used as the baseline system.
 
-Evaluation used **3 manually aligned pages with ground truth transcription**.
+### Observations
 
-### Historical Spanish Normalization
+* Works reasonably well on modern text
+* Struggles with:
 
-Before computing metrics, normalization rules were applied:
-
-- u and v treated as interchangeable  
-- long s normalized (f → s)  
-- ç converted to z  
-- accents removed (except ñ)  
-- whitespace normalized  
+  * historical fonts
+  * degraded scans
+  * irregular spacing
 
 ---
 
-### Evaluation Metrics
+# 3. Layout Cleaning
 
-Two standard OCR metrics were used.
+Margins were trimmed:
 
-**Character Error Rate (CER)**  
-Measures character-level edit distance.
+* Left: 2%
+* Right: 2%
+* Bottom: 4%
+* Top: 0%
 
-**Word Error Rate (WER)**  
-Measures word-level edit distance.
+### Result
 
----
-
-### Baseline Results
-
-| Metric | Score |
-|------|------|
-CER | ~10.5% |
-WER | ~48.3% |
-
-CER indicates moderate character accuracy, while high WER is expected due to:
-
-- historical spelling variation  
-- segmentation issues  
-- hyphenation artifacts  
-
-This baseline serves as the reference point for evaluating the CRNN model.
+Minimal improvement → errors mainly due to **character recognition**, not layout.
 
 ---
 
-# 4. Layout Cleaning
+# 4. Line Segmentation
 
-To remove margin artifacts:
+Text lines extracted using:
 
-- 2% left trim  
-- 2% right trim  
-- 4% bottom trim  
-- no top trim  
-
-After cleaning, OCR evaluation was repeated.
-
-### Clean Baseline Results
-
-| Metric | Score |
-|------|------|
-CER | 10.7% |
-WER | 48.3% |
-
-Layout cleaning did **not significantly affect accuracy**, confirming that most OCR errors arise from **character confusions rather than layout noise**.
-
----
-
-# 5. CRNN Training Data Preparation
-
-Training data was generated automatically using **Tesseract line detection**.
-
-### Line Segmentation
-
-Using:
-
-```
-
+```python
 pytesseract.image_to_data()
-
 ```
-
-Each detected text line was cropped and stored as an individual image.
 
 Example:
 
 ```
-
-data/train_lines/page12_line_0.png
-
+data/train_lines/page_1_line_0.png
 ```
 
-Corresponding OCR text is stored as a pseudo-label:
+---
+
+# 5. Dataset Creation (Pseudo-labeling)
+
+Each line image is paired with Tesseract output:
 
 ```
-
-data/train_line_labels/page12_line_0.txt
-
+Line Image → OCR Text (pseudo-label)
 ```
 
-Each training sample becomes:
+### Important
 
-```
-
-Line Image → Text Label
-
-```
+This introduces **label noise**, affecting training quality.
 
 ---
 
 # 6. Vocabulary Creation
 
-All characters appearing in pseudo-label files were collected to create a vocabulary.
-
 Stored in:
 
 ```
-
 models/vocab.json
-
 ```
 
-Important rule:
+Important:
 
 ```
-
 Index 0 → reserved for CTC blank token
-
 ```
 
 ---
 
-# 7. Dataset Pipeline
+# 7. CRNN Model
 
-A custom **PyTorch dataset** was implemented.
-
-### LineDataset
-
-Loads:
-
-- line images  
-- text labels  
-
-### Image Processing
-
-Images are:
-
-- converted to grayscale  
-- resized to **64 × 256**  
-- normalized  
-- converted to tensors  
-
-### Text Encoding
-
-Text labels are encoded into integer sequences using:
+Architecture:
 
 ```
-
-TextEncoder
-
+CNN → Feature Extraction
+RNN → Sequence Modeling
+CTC → Decoding
 ```
 
 ---
 
-# Dataset Verification
+# 8. Training Process
 
-Example DataLoader batch:
+### Environment
 
-```
+* Local + **Google Colab (GPU)**
 
-Images: torch.Size([4, 1, 64, 256])
-Labels: torch.Size([128])
-Lengths: tensor([45, 21, 32, 30])
+### Experiments
 
-```
+| Experiment | Lines | Epochs |
+| ---------- | ----- | ------ |
+| Initial    | 1000  | 3      |
+| Extended   | 3000  | 15     |
+| Final      | 3000+ | 50     |
 
-This confirms correct batching for **CTC training**.
+### Observations
 
----
+* Loss decreased
+* Model struggled with long sequences
+* Output often collapsed to:
 
-# 8. Initial CRNN Training
-
-The CRNN model was first trained using a small subset of the dataset.
-
-Training configuration:
-
-```
-
-Dataset size: 1000 line images
-Epochs: 3
-Batch size: 2
-Optimizer: Adam
-Loss: CTC Loss
-
-```
-
-Training results:
-
-```
-
-Epoch 1/3 Loss: 3.5465
-Epoch 2/3 Loss: 3.0788
-Epoch 3/3 Loss: 2.9995
-
-```
-
-The model was successfully saved as:
-
-```
-
-models/crnn_model.pth
-
-```
+  * single characters
+  * repeated tokens
 
 ---
 
-# 9. CRNN Inference Pipeline
+# 9. CRNN Inference
 
-Inference utilities were implemented in:
+Implemented in:
 
 ```
-
 utils/crnn_inference.py
-
 ```
 
-Core components:
+Pipeline:
 
 ```
-
-load_model()
-preprocess_image()
-decode_prediction()
-predict_line()
-
+Image → Preprocess → Model → Argmax → CTC Decode
 ```
-
-### CTC Decoding Rules
-
-- index **0 reserved for blank token**
-- repeated characters collapsed
-- indices mapped back to characters using vocabulary
 
 ---
 
-# Extended Training Experiments
+# 10. Prediction Processing
 
-To improve recognition accuracy, additional training experiments were conducted.
-
-### Experiment Setup
+Merged into page-level text:
 
 ```
-
-Training lines: 3000
-Epochs: 15
-Batch size: 2
-Learning rate: 0.0005
-
+results/page_1_predicted.txt
 ```
-
-Training successfully completed and the updated model was saved.
-
-However, during inference testing the model predictions remained incorrect.
-
-Example outputs:
-
-```
-
-Input line: "tesoro de la lengua"
-
-Predicted outputs:
-r:
-v:
-e
-A e
-
-```
-
-The model frequently predicted **single characters or repetitive outputs** rather than full words.
 
 ---
 
-# Observed Model Issues
+# 11. LLM-based Post-processing (Groq)
 
-The trained CRNN model currently struggles with:
+A **Groq-hosted LLM (LLaMA 3.1)** is used as a final refinement step.
 
-- predicting **complete sequences**
-- learning long text patterns
-- generalizing across line images
-
-Most predictions collapse into **single-character outputs**.
-
-This behavior indicates possible issues such as:
-
-- insufficient training data
-- noisy pseudo-labels from Tesseract
-- CTC training instability
-- model underfitting
-
----
-
-# Ongoing Work
-
-Current experiments aim to improve model performance.
-
-Active investigations include:
-
-- increasing dataset size beyond **3000 lines**
-- training for **50+ epochs**
-- experimenting with **larger batch sizes**
-- running training on **GPU using Google Colab**
-- improving label quality
-- testing different learning rates
-
-These steps aim to reduce **Character Error Rate (CER)** compared to the Tesseract baseline.
-
----
-
-# Next Steps
-
-Planned improvements:
-
-- train CRNN on larger dataset
-- improve pseudo-label quality
-- experiment with deeper CNN backbones
-- implement beam search decoding
-- integrate **LLM-based OCR post-correction**
-
----
-
-# Project Structure
+### Pipeline
 
 ```
+CRNN OCR → LLM Correction → Final Text
+```
 
+### Approach
+
+* Text split into chunks (to handle token limits)
+* LLM constrained to:
+
+  * only fix OCR errors
+  * avoid rewriting text
+  * preserve structure
+
+### Key Insight
+
+LLMs improve **readability**, but may not always improve **CER/WER** due to strict alignment metrics.
+
+---
+
+# 12. Evaluation Metrics
+
+### Character Error Rate (CER)
+
+Character-level edit distance
+
+### Word Error Rate (WER)
+
+Word-level edit distance
+
+---
+
+# 13. Evaluation Results
+
+| Model      | CER   | WER   |
+| ---------- | ----- | ----- |
+| CRNN       | 26.70 | 32.51 |
+| Tesseract  | 42.02 | 44.60 |
+| CRNN + LLM | 30.64 | 37.42 |
+
+---
+
+# 14. Result Analysis
+
+### Observations
+
+* CRNN **outperforms Tesseract**
+* LLM slightly **degrades CER/WER**
+* However, LLM improves:
+
+  * readability
+  * spelling consistency
+
+### Key Insight
+
+> LLMs improve qualitative output but may degrade strict OCR metrics.
+
+---
+
+# 15. Why Accuracy is Low
+
+### 1. Noisy Labels
+
+* Tesseract-generated labels introduce errors
+
+### 2. Limited Dataset
+
+* Only ~3000 lines
+
+### 3. Historical Text Complexity
+
+* old fonts
+* spelling variations
+
+### 4. CTC Limitations
+
+* sequence alignment issues
+* output collapse
+
+### 5. Segmentation Errors
+
+* imperfect line crops
+
+---
+
+# 16. Why This Approach Matters
+
+* CRNN > Tesseract
+* Demonstrates **end-to-end OCR system**
+* Shows **LLM integration**
+* Reflects **real-world research challenges**
+
+---
+
+# 17. Future Improvements
+
+### Data
+
+* Manual ground truth labels
+* Larger dataset (10k+ lines)
+
+### Model
+
+* Transformer-based OCR
+* deeper CNN backbone
+* beam search decoding
+
+### LLM
+
+* better prompt engineering
+* alignment-aware correction
+
+### Post-processing
+
+* language models
+* spell correction
+
+---
+
+# 18. Project Structure
+
+```
 renai_project/
 
 data/
-images/
-train_lines/
-train_line_labels/
+   images/
+   train_lines/
+   train_line_labels/
+   ground_truth/
 
 models/
-crnn.py
-vocab.json
-crnn_model.pth
+   crnn.py
+   vocab.json
+   crnn_epoch_50.pth
 
 utils/
-dataset.py
-text_encoder.py
-crnn_inference.py
+   dataset.py
+   text_encoder.py
+   crnn_inference.py
 
-train_crnn.py
+scripts/
+   merge_predictions.py
+   merge_tesseract_predictions.py
+   evaluate_ocr.py
+   evaluate_tesseract.py
+   evaluate_llm.py
+   llm_postprocess.py
 
+results/
+   crnn_predictions.txt
+   tesseract_predictions.txt
+   page_1_predicted.txt
+   page_1_tesseract.txt
+   page_1_llm.txt
+   metrics.txt
 ```
 
 ---
 
-# Technologies Used
+# 19. Technologies Used
 
-- Python  
-- PyTorch  
-- Tesseract OCR  
-- OpenCV  
-- pytesseract  
+* Python
+* PyTorch
+* OpenCV
+* Tesseract OCR
+* pytesseract
+* Groq API (LLM)
+* Google Colab (GPU training)
 
 ---
 
-# Goal
+# 20. Key Learnings
 
-Develop an OCR system specialized for **historical Spanish texts**, improving recognition accuracy beyond standard OCR engines.
-```
-=======
-# Historical Spanish OCR + NLP Pipeline
+* OCR pipelines are multi-stage systems
+* Data quality > model complexity
+* Historical OCR is challenging
+* LLMs improve readability but not always metrics
+* Evaluation is critical
 
-This project develops an OCR and Natural Language Processing pipeline for extracting and analyzing text from historical Spanish book scans.
+---
 
-## Objectives
-- Extract text from scanned historical documents using OCR
-- Perform preprocessing and normalization of OCR outputs
-- Apply NLP techniques such as tokenization and Named Entity Recognition (NER)
-- Enable lexical extraction and analysis from historical Spanish corpora
+# Final Conclusion
 
-## Methods
-- OCR-based text extraction from scanned pages
-- Text preprocessing and normalization
-- Tokenization and Named Entity Recognition using SpaCy
-- Exploration of multilingual transformer models (mBERT) for semantic analysis
+This project builds a **complete OCR pipeline for historical Spanish texts**, integrating:
 
-## Tools
-Python, SpaCy, NLTK, Tesseract/EasyOCR, Transformers
+* deep learning OCR (CRNN)
+* baseline comparison (Tesseract)
+* LLM-based refinement
 
-## Project Status
-Initial implementation completed (over 50% of the pipeline developed). Remaining components and full codebase will be uploaded soon.
->>>>>>> 9c6d8b5bde7ef2b36a5f3c699495764166473413
+While accuracy remains limited due to dataset and label constraints, the CRNN model shows **clear improvement over traditional OCR**, and the integration of LLM demonstrates modern hybrid OCR approaches.

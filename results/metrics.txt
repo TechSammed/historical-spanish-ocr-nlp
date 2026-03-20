@@ -3,6 +3,10 @@ OCR Evaluation Results
 Dataset: Historical Spanish document pages
 Evaluation page: Page 1
 
+Baseline OCR
+Average CER: 0.10710942803174828
+Average WER: 0.4830181245074862
+
 CRNN Model
 CER: 26.70
 WER: 32.51
@@ -11,6 +15,7 @@ Tesseract OCR
 CER: 42.02
 WER: 44.60
 
-Observation:
-The CRNN model outperforms the traditional Tesseract OCR engine
-on this historical document dataset.
+
+LLM Evaluation Results:
+Character Error Rate (CER): 30.64
+Word Error Rate (WER): 37.42553191489362
