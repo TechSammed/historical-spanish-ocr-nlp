@@ -449,3 +449,5 @@ This project builds a **complete OCR system for historical Spanish texts**, inte
 
   
 While accuracy is limited due to dataset and label constraints, the CRNN model shows clear improvement over traditional OCR, and the integration of LLM demonstrates modern hybrid OCR approaches and their trade-offs.
+
+build with OCR
